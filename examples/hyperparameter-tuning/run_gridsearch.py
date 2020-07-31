@@ -10,31 +10,41 @@ import click
 import bz2
 
 
-def load_data(n):
+def load_data(mib):
     # Download the dataset at 
     # https://www.kaggle.com/bittlingmayer/amazonreviews
     
     print("Loading Amazon reviews dataset:")
     compressed = bz2.BZ2File('./train.ft.txt.bz2')
-    data = [compressed.readline().decode('utf-8') for _ in range(n)]
 
-    target = [int(l[9])-1 for l in data]
-    data = [l[11:] for l in data]
+    X = []
+    y = []
+    total_size = 0
+    for _ in range(3_600_000):
+        line = compressed.readline().decode('utf-8')
+        X.append(line[11:])
+        y.append(int(line[9]) - 1) # __label__1, __label__2
 
-    print("\t%d reviews" % n)
-    print("\t%0.2f MiB of data" % (sum(len(d) for d in data) / 2 ** 20))
-    return data, target
+        total_size += len(line[11:])
+        if (total_size / 2 ** 20) > mib:
+            break
+
+    print("\t%d reviews" % len(X))
+    print("\t%0.2f MiB of data" % (total_size / 2 ** 20))
+    return X, y
 
 
 @click.command()
 @click.option('--backend', default='loky', help='Joblib backend to perform grid search '
                                                 '(loky | cloudbutton | dask | ray | tune)')
-@click.option('--address', default=None, help='Scheduler address (dask) or head node address (ray, ray[tune])')
-@click.option('--nreviews', default=10000, type=int, help='Num of reviews to load and train (0 < n <= 3600000)')
-@click.option('--refit', default=False, is_flag=True, help='Fit the model with the best configuration and print score')
-def main(backend, address, nreviews, refit):
+@click.option('--address', default=None, help='Scheduler address (dask) or head node address '
+                                              '(ray, ray[tune])')
+@click.option('--mib', default=10, type=int, help='Load X MiB from the dataset')
+@click.option('--refit', default=False, is_flag=True, help='Fit the final model with the best '
+                                                           'configuration and print score')
+def main(backend, address, mib, refit):
     
-    data, target = load_data(nreviews)
+    X, y = load_data(mib)
     
     n_features = 2 ** 18
     pipeline = Pipeline([
@@ -104,10 +114,9 @@ def main(backend, address, nreviews, refit):
     with joblib.parallel_backend(backend):
         print("Performing grid search...")
         t0 = time()
-        grid_search.fit(data, target)
+        grid_search.fit(X, y)
         total_time = time() - t0
         print("Done in %0.3fs\n" % total_time) 
-
 
     if refit:
         print("Best score: %0.3f" % grid_search.best_score_)

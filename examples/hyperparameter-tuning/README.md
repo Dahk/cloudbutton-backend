@@ -7,5 +7,5 @@
    ```
 
    ```bash
-   $ python3 run_gridsearch.py --backend cloudbutton --nreviews 10000
+   $ python3 run_gridsearch.py --backend cloudbutton --mib 10
    ```
